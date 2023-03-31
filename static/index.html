@@ -35,10 +35,11 @@ var W = canvas.width  = window.innerWidth-6;
 var H = canvas.height = window.innerHeight-50;
 var wscounter = 0;
 var socket;
+var closed = false;
 
 function debug(str) {
     var debugDiv = document.getElementById('debug');
-    debugDiv.innerHTML = "" + str;
+    // debugDiv.innerHTML = "" + str;
 }
 debug("Test");
 
@@ -47,15 +48,23 @@ world = {};
 //XXX: TODO Make this prettier!
 function drawCircle(context,entity) {
     with(context) {
-        beginPath();                
-        lineWidth = 3;
+        beginPath();
+        lineWidth = 7;
         var x = entity["x"];
         var y = entity["y"];
+        var radius = (entity["radius"])?entity["radius"]:50;
         //moveTo(x,y);
-        fillStyle = entity["colour"];
-        strokeStyle = fillStyle;
-        arc(x, y, (entity["radius"])?entity["radius"]:50, 0, 2.0 * Math.PI, false);  
-        stroke();                                
+        // fillStyle = entity["colour"];
+        var grd=createLinearGradient(x-radius, y-radius, x+radius, y+radius);
+        grd.addColorStop("0", (entity["colour1"])?entity["colour1"]:"blue");
+        grd.addColorStop("0.3",(entity["colour2"])?entity["colour2"]:"blue");
+        grd.addColorStop("0.5",(entity["colour3"])?entity["colour3"]:"blue");
+        grd.addColorStop("0.6",(entity["colour4"])?entity["colour4"]:"blue");
+        grd.addColorStop("0.8",(entity["colour5"])?entity["colour5"]:"blue");
+        grd.addColorStop("1.0",(entity["colour6"])?entity["colour6"]:"blue");
+        strokeStyle = grd;
+        arc(x, y, radius, 0, 2.0 * Math.PI);
+        stroke();
     }
 }
 
@@ -122,13 +131,18 @@ function getPosition(e) {
 }
 
 function addEntity(entity, data) {
-    world[entity] = data;
-    drawNextFrame(); // (but should we?)
+    // world[entity] = data;
+    // drawNextFrame(); // (but should we?)
     //XXX: Send a XHTML Request that updates the entity you just modified!
+    if(!closed) {
+        result = {};
+        result[entity] = data;
+        socket.send(JSON.stringify(result));
+    }
 }
 var counter = 0;
 function addEntityWithoutName(data) {
-    var name = "X"+(counter++)%100;
+    var name = "X"+(counter++);
     addEntity(name,data);
 }
 
@@ -231,16 +245,26 @@ mouse = (function() {
 // Add the application specific mouse listeners!
 //XXX: TODO Make these prettier!
 mouse.mousedowners.push(function(x,y,clicked,e) {
-    addEntityWithoutName({'x':x,'y':y,'colour':'blue'});
+    addEntityWithoutName({'x':x,'y':y,
+            'colour1':'black','colour2':'magenta','colour3':'blue',
+            'colour4':'green','colour5':'yellow','colour6':'red'});
 });
 
 mouse.mouseuppers.push(function(x,y,clicked,e) {
-    addEntityWithoutName({'x':x,'y':y,'colour':'red'});
+    addEntityWithoutName({'x':x,'y':y,
+            'colour1':'red','colour2':'green','colour3':'lightpink',
+            'colour4':'lightcoral','colour5':'lightcyan','colour6':'white'});
 });
 
+var prevTime = 0;
 mouse.mousedraggers.push(function(x,y,clicked,e) {
-    addEntityWithoutName({'x':x,'y':y,'colour':'green',
-                          'radius':10});
+    var time = (new Date()).getTime();
+    if(time - prevTime >= 1000 / 50) {     // At most 50 circles for a second
+        prevTime = time;
+        addEntityWithoutName({'x':x,'y':y,
+            'colour1':'lawngreen','colour2':'lightblue','colour3':'green',
+            'colour4':'lightskyblue','colour5':'red','colour6':'yellow','radius':10});
+    }
 });
 
 
@@ -254,6 +278,12 @@ function wsSetup() {
     socket = new WebSocket(url);
     socket.onopen = function() {
         //XXX: TODO What are you going to do here?
+        socket.send(JSON.stringify({"type": "UpdateAll"}));
+    };
+    socket.onclose = function() {
+        //XXX: TODO What are you going to do here?
+        alert('Closed');
+        closed = true
     };
     socket.onerror = function(msg) {
         debug("WebSocket Error:" + msg.data);
@@ -261,7 +291,17 @@ function wsSetup() {
     socket.onmessage = function(msg) {  
         try {
             debug("WebSocket Recv:" + msg.data);
-            //XXX: TODO What are you going to do here?            
+            //XXX: TODO What are you going to do here?
+            var result = JSON.parse(msg.data);
+            console.log(result);
+            for (var key in result) {
+                world[key] = result[key]
+                var id = Number(key.substring(1));
+                if(counter <= id) {
+                    counter = id + 1;
+                }
+            }
+            drawNextFrame();
         } catch (e) {
             alert("socket on message: " + e);
         }
